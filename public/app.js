@@ -112,8 +112,8 @@ async function buildDemo() {
     const f = last ? .45 : 1;
     const prof = [
       { claude: 150 + rnd() * 90, crm: 220 + rnd() * 120, work: 60, scroll: 25 + rnd() * 30, other: 30 },
-      { trading: 260 + rnd() * 120, claude: 30, scroll: 80 + rnd() * 60, other: 40 },
-      { work: day % 6 === 5 ? 40 : 300 + rnd() * 140, claude: 70, scroll: 60 + rnd() * 90, other: 50 },
+      { trading: 260 + rnd() * 120, claude: 30, games: 50 + rnd() * 60, scroll: 30 + rnd() * 30, other: 40 },
+      { work: day % 6 === 5 ? 40 : 300 + rnd() * 140, claude: 70, video: 60 + rnd() * 50, scroll: 20 + rnd() * 30, other: 50 },
       { work: day > 20 ? 120 + rnd() * 60 : 360, scroll: 140 + rnd() * 60, other: 60 },
       { work: day % 4 ? 280 : 20, claude: 40, scroll: 200, other: 70 },
     ];
@@ -151,6 +151,13 @@ async function buildDemo() {
   for (const [k, mins] of [[0, 34], [1, 95], [2, 61]]) {
     await api('GET', `/p/${keys[k]}/open`); t += mins * 60000; await api('GET', `/p/${keys[k]}/close`); t -= mins * 60000;
   }
+  // live statuses
+  const day = dayKey(Date.now(), tz);
+  const live = async (k, cat, label, mins) => { await api('POST', '/ingest', { token: toks[k], date: day, tz, minutes: {}, now: { cat, label } }); };
+  t = Date.now() - 75 * 60000; await live(2, 'video', 'Netflix');
+  t = Date.now() - 22 * 60000; await live(1, 'games', 'Valorant');
+  t = Date.now() - 40 * 60000; await live(0, 'claude', 'Claude'); await live(3, 'scroll', 'Instagram');
+  t = Date.now() - 60000; await live(2, 'video', 'Netflix'); await live(1, 'games', 'Valorant'); await live(0, 'claude', 'Claude'); await live(3, 'scroll', 'Instagram');
   t = Date.now();
   return { api, token: toks[0], tick: () => {} };
 }
@@ -214,8 +221,23 @@ const ICONS = {
   sound: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
   mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 6 6M22 9l-6 6"/></svg>',
 };
-const CAT_COLORS = { claude: '#ff9a5a', crm: '#ff58db', trading: '#55f2ff', work: '#8dff6a', scroll: '#ffd25a', other: '#6d73b0' };
-const EV_ICON = { phoneOff: '📵', promo: '⬆️', demo: '⬇️', overtake: '🏎️', streakBreak: '💔', streak: '🔥', record: '🎯', inactive: '💤', chWin: '🏆', joker: '🧘', post: '💬' };
+const CAT_COLORS = { claude: '#ff9a5a', crm: '#ff58db', trading: '#55f2ff', work: '#8dff6a', games: '#ff6a7d', video: '#b38bff', scroll: '#ffd25a', phone: '#ffb070', other: '#6d73b0' };
+const WORK_IDS = ['claude', 'crm', 'trading', 'work'];
+function liveInfo(s) {
+  const lv = s.live;
+  if (lv && lv.ghost) return { cls: 'ghost', ico: '👻', text: 'Mode fantôme' };
+  if (!lv) return s.agentEver ? { cls: 'off', ico: '⚫', text: 'PC éteint' } : { cls: 'off', ico: '⚫', text: 'Pas d\'agent' };
+  const mins = lv.since ? Math.max(0, Math.round((Date.now() - lv.since) / 60000)) : 0;
+  const dur = mins >= 1 ? ` depuis ${fmtH(mins)}` : '';
+  if (!lv.cat) return { cls: 'afk', ico: '💤', text: 'AFK' + dur };
+  if (lv.cat === 'games') return { cls: 'games', ico: '🎮', text: (lv.label || 'Un jeu') + dur, hot: true };
+  if (lv.cat === 'video') return { cls: 'video', ico: '📺', text: (lv.label || 'Une vidéo') + dur, hot: true };
+  if (lv.cat === 'scroll') return { cls: 'scroll', ico: '📱', text: (lv.label || 'Réseaux') + dur, hot: true };
+  if (WORK_IDS.includes(lv.cat)) return { cls: 'work', ico: '💼', text: (lv.label || (S.data.cats.find(c => c.id === lv.cat) || {}).label || 'Au boulot') + dur };
+  return { cls: 'pc', ico: '💻', text: (lv.label || 'Sur le PC') + dur };
+}
+const liveChip = s => { const i = liveInfo(s); return `<span class="livechip ${i.cls}">${i.hot || i.cls === 'work' ? '<i class="pulse-dot"></i>' : ''}<span>${i.ico}</span><span class="lt">${esc(i.text)}</span></span>`; };
+const EV_ICON = { gameOn: '🎮', videoLong: '📺', phoneOff: '📵', promo: '⬆️', demo: '⬇️', overtake: '🏎️', streakBreak: '💔', streak: '🔥', record: '🎯', inactive: '💤', chWin: '🏆', joker: '🧘', post: '💬' };
 const EMOJIS = ['🦊', '🐺', '🦁', '🐉', '🦅', '🐯', '🦈', '🐍'];
 
 function render() {
@@ -298,12 +320,20 @@ function viewLigue() {
       <div class="barlabel"><span>${me.rank.progress}/100</span><span>${esc(nextLabel)}</span></div>
     </div>
   </section>
+  <section class="nowcard">
+    <h3>En ce moment</h3>
+    <div class="nowlist">${d.standings.map(s => `<button class="nowrow" data-player="${s.id}"><span class="nm">${esc(s.emoji)} ${esc(s.name)}</span>${liveChip(s)}</button>`).join('')}</div>
+  </section>
   <section>
     <div class="ladder">${d.standings.map(rowHTML).join('')}</div>
   </section>
   <section class="section">
     <h2>Aujourd'hui en heures</h2>
     <div class="card stack">${todayBoard()}</div>
+  </section>
+  <section class="section">
+    <h2>Le mur de la honte</h2>
+    <div class="card stack">${shameBoard()}</div>
   </section>
   ${d.seasonsHistory.length ? `<section class="section"><h2>Palmarès des saisons</h2><div class="card">${d.seasonsHistory.slice().reverse().map(s => `<div class="kv"><span>Saison ${s.season}</span><span>${s.podium.map((p, i) => `${['🥇', '🥈', '🥉'][i]} ${esc(nameOf(p.id))}`).join('  ')}</span></div>`).join('')}</div></section>` : ''}
   <p class="small faint" style="margin-top:22px">Points du jour : 50 % progression argent vs tes 4 dernières semaines, 30 % heures de boulot (8 h max), 20 % régularité. Le rang récompense ton résultat, pas les risques pris.</p>`;
@@ -316,11 +346,23 @@ function rowHTML(s) {
     <span class="pos">${s.pos}</span>
     ${crest(s.rank.tier, s.rank.div)}
     <span class="who">
-      <span class="name">${esc(s.emoji)} ${esc(s.name)}${me ? ' <span class="faint small">(toi)</span>' : ''}</span>
+      <span class="name">${esc(s.emoji)} ${esc(s.name)}${me ? ' <span class="faint small">(toi)</span>' : ''}${liveInfo(s).hot ? ` <span class="livetag ${liveInfo(s).cls}">${liveInfo(s).ico} LIVE</span>` : ''}</span>
       <span class="sub"><span><span class="dot ${s.agentOnline ? 'on' : ''}"></span>${fmtH(s.today.work)}</span>${s.phone === 'on' ? `<span title="Scroll téléphone aujourd'hui">📱 ${fmtH(s.today.phone)}</span>` : s.phone === 'off' ? '<span style="color:var(--red)">📵 tracker coupé</span>' : ''}${s.streak ? `<span>🔥 ${s.streak}</span>` : ''}${money}${s.palier ? `<span>💰 ${esc(s.palier)}</span>` : ''}</span>
     </span>
     <span class="lp"><span class="num">${s.lp}</span><br><span class="small muted">${esc(s.rank.label)}</span></span>
   </button>`;
+}
+function shameBoard() {
+  const st = S.data.standings;
+  const parts = s => ({ games: s.today.cats.games || 0, video: s.today.cats.video || 0, scroll: s.today.cats.scroll || 0, phone: s.today.phone || 0 });
+  const tot = s => Object.values(parts(s)).reduce((a, b) => a + b, 0);
+  const max = Math.max(60, ...st.map(tot));
+  const sorted = st.slice().sort((a, b) => tot(b) - tot(a));
+  if (!sorted.some(s => tot(s) > 0)) return '<div class="empty">Personne n\'a encore perdu de temps aujourd\'hui. Ça ne va pas durer.</div>';
+  return sorted.map((s, i) => `<div class="cat"><span>${i === 0 && tot(s) > 0 ? '🤡 ' : ''}${esc(s.emoji)} ${esc(s.name)}</span>
+    <span class="track" style="display:flex">${Object.entries(parts(s)).map(([c, v]) => `<i style="width:${(v / max) * 100}%;background:${CAT_COLORS[c]}" title="${c}"></i>`).join('')}</span>
+    <span class="num small" style="text-align:right">${fmtH(tot(s))}</span></div>`).join('') +
+    `<div class="chips small"><span class="chip"><span class="dot" style="background:${CAT_COLORS.games}"></span>Jeux</span><span class="chip"><span class="dot" style="background:${CAT_COLORS.video}"></span>Vidéo</span><span class="chip"><span class="dot" style="background:${CAT_COLORS.scroll}"></span>Réseaux PC</span><span class="chip"><span class="dot" style="background:${CAT_COLORS.phone}"></span>Téléphone</span></div>`;
 }
 function todayBoard() {
   const st = S.data.standings;
@@ -341,7 +383,7 @@ function playerSheet(id) {
     <div style="display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:center">
       ${crest(s.rank.tier, s.rank.div)}
       <div><h2>${esc(s.emoji)} ${esc(s.name)}</h2><div class="muted">${esc(s.rank.label)}, ${s.lp} LP, #${s.pos}</div>
-      <div class="meta chips" style="margin-top:8px">${s.agentOnline ? '<span class="chip up">Agent en ligne</span>' : s.agentEver ? '<span class="chip">Agent hors ligne</span>' : '<span class="chip">Pas d\'agent : heures non mesurées</span>'}</div></div>
+      <div class="meta chips" style="margin-top:8px">${liveChip(s)}${s.agentOnline ? '<span class="chip up">Agent en ligne</span>' : s.agentEver ? '<span class="chip">Agent hors ligne</span>' : '<span class="chip">Pas d\'agent : heures non mesurées</span>'}</div></div>
     </div>
     <div class="stack" style="margin-top:16px">
       ${cats.map(c => `<div class="cat"><span>${esc(c.label)}</span><span class="track"><i style="width:${((s.today.cats[c.id] || 0) / max) * 100}%;background:${CAT_COLORS[c.id]}"></i></span><span class="num small" style="text-align:right">${fmtH(s.today.cats[c.id])}</span></div>`).join('')}
@@ -376,7 +418,7 @@ function viewDuels() {
       <div class="f"><span class="small muted">Durée</span><div class="chips" id="dDays">${[1, 3, 7].map(n => `<button class="pick" data-days="${n}" aria-pressed="${S.duel.days === n}">${n} jour${n > 1 ? 's' : ''}</button>`).join('')}</div></div>
       <label class="f">La mise<input type="text" id="dStake" maxlength="40" placeholder="l'apéro, un resto…"></label>
       <button class="btn primary" data-act="duel" ${others.length ? '' : 'disabled'}>Envoyer le défi</button>
-      <p class="small faint" style="margin:0">Anti-scroll : le moins de scroll (PC + téléphone) gagne. Un jour à moins de 2 h de boulot compte comme 10 h de scroll. Tracker téléphone coupé pendant le duel = défaite d'office.</p>
+      <p class="small faint" style="margin:0">Anti-distraction : le moins de temps perdu gagne (jeux, vidéo, réseaux sur PC + téléphone). Un jour à moins de 2 h de boulot compte comme 10 h perdues. Tracker téléphone coupé pendant le duel = défaite d'office.</p>
     </div>
   </section>
   <section class="section">
@@ -423,7 +465,7 @@ function viewFeed() {
       const from = e.from ? d.standings.find(s => s.id === e.from) : null;
       const to = e.to ? d.standings.find(s => s.id === e.to) : null;
       const head = e.type === 'post' && from ? `<b>${esc(from.emoji)} ${esc(from.name)}</b>${to ? ` <span class="muted">à ${esc(to.name)}</span>` : ''}<br>` : '';
-      return `<div class="ev ${e.type}"><span class="ico" aria-hidden="true">${e.type === 'post' && !from ? '📣' : EV_ICON[e.type] || '•'}</span><div>${head}${esc(e.text)}<div class="when">${ago(e)}</div></div></div>`;
+      return `<div class="ev ${e.kind || e.type}"><span class="ico" aria-hidden="true">${e.kind ? EV_ICON[e.kind] : e.type === 'post' && !from ? '📣' : EV_ICON[e.type] || '•'}</span><div>${head}${esc(e.text)}<div class="when">${ago(e)}</div></div></div>`;
     }).join('') : '<div class="empty">Rien encore. Lance un duel ou une vanne.</div>'}</div>
   </section>`;
 }
@@ -436,6 +478,7 @@ function viewMoi() {
   const inviteUrl = d.league.invite ? `${location.origin}${location.pathname}?invite=${d.league.invite}` : '';
   const pal = me.palier;
   const kwText = id => (me.kw[id] || []).join(', ');
+  const isPhone = /iPhone|iPad|Android/i.test(navigator.userAgent);
   return `
   <section class="section" style="margin-top:10px">
     <h2>Ta journée</h2>
@@ -478,21 +521,31 @@ function viewMoi() {
   </section>
 
   <section class="section">
-    <h2>Téléphone (scroll iPhone)</h2>
+    <h2>Ton iPhone</h2>
     <div class="card stack">
+      <h3>1. Mettre RANKED sur ton iPhone</h3>
+      ${isPhone ? `<p class="small muted" style="margin:0">Tu es déjà dessus. Pour l'avoir en app : bouton <b>Partager</b> de Safari, <b>Sur l'écran d'accueil</b>, <b>Ajouter</b>.</p>` : `
+      <ol class="steps small">
+        <li>Clique « Afficher le QR code ».</li>
+        <li>Scanne-le avec l'appareil photo de l'iPhone. Tu arrives connecté, sans code à taper.</li>
+        <li>Dans Safari : <b>Partager</b>, <b>Sur l'écran d'accueil</b>, <b>Ajouter</b>. RANKED devient une app.</li>
+      </ol>
+      <button class="btn primary" data-act="qr">Afficher le QR code</button>`}
+    </div>
+    <div class="card stack">
+      <h3>2. Compter ton scroll iPhone</h3>
       <div class="kv"><span>Statut</span><span>${st.phone === 'on' ? '<span class="dot on"></span>Suivi actif' : st.phone === 'off' ? '<span style="color:var(--red)">📵 Coupé depuis plus de 26 h</span>' : 'Pas encore réglé'}</span></div>
       ${me.phoneKey ? `
-      <div class="small muted">Tes 3 liens perso. Ne les partage pas.</div>
-      ${[['open', 'Lien OUVERTE'], ['close', 'Lien FERMÉE'], ['ping', 'Lien CHAQUE SOIR']].map(([ev, l]) => `<div class="grid2" style="align-items:center"><code class="small">${esc(location.origin)}/api/p/${esc(me.phoneKey)}/${ev}</code><button class="btn sm" data-act="copyPhone" data-ev="${ev}">Copier ${l}</button></div>`).join('')}
+      <p class="small muted" style="margin:0">À faire sur l'iPhone, une seule fois (3 min). ${isPhone ? '' : 'Ouvre d\'abord RANKED sur l\'iPhone (étape 1) pour copier les liens directement.'}</p>
       <ol class="steps small">
         <li>Ouvre l'app <b>Raccourcis</b>, onglet <b>Automatisation</b>, touche <b>+</b>.</li>
-        <li>Choisis <b>App</b>. Sélectionne Instagram, TikTok, YouTube, Snapchat, Facebook, X, Reddit, Netflix.</li>
-        <li>Coche <b>Est ouverte</b> seulement, puis <b>Exécuter immédiatement</b>, puis <b>Suivant</b>.</li>
-        <li><b>Nouveau raccourci vide</b>, ajoute l'action <b>Obtenir le contenu de l'URL</b>, colle le <b>lien OUVERTE</b>.</li>
-        <li>Refais pareil avec <b>Est fermée</b> et le <b>lien FERMÉE</b> (mêmes apps).</li>
-        <li>3e automatisation : <b>Heure de la journée</b>, 21:00, tous les jours, <b>Exécuter immédiatement</b>, <b>lien CHAQUE SOIR</b>.</li>
+        <li>Choisis <b>App</b>. Sélectionne Instagram, TikTok, YouTube, Snapchat, Facebook, X, Reddit, Netflix. Coche <b>Est ouvert</b> seulement.</li>
+        <li>Coche <b>Exécuter immédiatement</b>, puis <b>Suivant</b>, puis <b>Nouvelle automatisation vide</b>.</li>
+        <li>Ajoute l'action <b>Obtenir le contenu de l'URL</b> et colle le lien OUVERT : <button class="btn sm" data-act="copyPhone" data-ev="open">Copier le lien OUVERT</button></li>
+        <li>Refais tout avec <b>Est fermé</b> (mêmes apps) et le lien FERMÉ : <button class="btn sm" data-act="copyPhone" data-ev="close">Copier le lien FERMÉ</button></li>
+        <li>3e automatisation : <b>Heure de la journée</b>, 21:00, tous les jours, <b>Exécuter immédiatement</b>, même action avec le lien SOIR : <button class="btn sm" data-act="copyPhone" data-ev="ping">Copier le lien SOIR</button></li>
       </ol>
-      <p class="small muted" style="margin:0">Pas de fichier à installer : Apple bloque toute app qui lirait le Temps d'écran. Les Raccourcis envoient juste « ouvert » et « fermé ». Zéro signal pendant 26 h = 📵 visible par toute la ligue, et défaite d'office en duel anti-scroll. Si un intitulé diffère un peu sur ton iPhone, prends le plus proche.</p>
+      <p class="small muted" style="margin:0">Pourquoi pas une app à télécharger : Apple interdit à toute app de lire le Temps d'écran. Les Raccourcis envoient juste « ouvert » et « fermé », jamais ce que tu regardes. Zéro signal pendant 26 h = 📵 visible par toute la ligue, et défaite d'office en duel anti-distraction.</p>
       <button class="btn ghost sm" data-act="rotatePhone">Changer mes liens (les anciens meurent)</button>` : `<button class="btn primary" data-act="phoneKey">Générer mes liens téléphone</button>`}
     </div>
   </section>
@@ -509,6 +562,7 @@ function viewMoi() {
         <label class="f">Objectif boulot / jour : <b class="num" id="goalV">${me.goalHours} h</b><input type="range" id="setGoal" min="2" max="12" value="${me.goalHours}"></label>
         <label class="f">Devise<select id="setCur"><option ${me.currency === 'EUR' ? 'selected' : ''}>EUR</option><option ${me.currency === 'USD' ? 'selected' : ''}>USD</option></select></label>
       </div>
+      <label class="kv" style="cursor:pointer"><span>Montrer en direct ce que je fais (jeu, vidéo, boulot)<br><span class="small faint">Désactivé = 👻 mode fantôme, visible par tous.</span></span><input type="checkbox" id="setLive" ${me.live ? 'checked' : ''}></label>
       <details><summary class="small muted" style="cursor:pointer">Mots-clés perso (ex. « instagram » pour compter Insta comme boulot)</summary>
         <div class="stack" style="margin-top:10px">${d.cats.filter(c => c.id !== 'other').map(c => `<label class="f">${esc(c.label)}<input type="text" data-kw="${c.id}" value="${esc(kwText(c.id))}" placeholder="mots séparés par des virgules"></label>`).join('')}</div>
       </details>
@@ -615,6 +669,15 @@ async function act(name, el) {
         await call('/settings', { token: T, name: $('#setName').value, moneyLabel: $('#setMoney').value, emoji: pressedIn('#setEmoji').emoji, goalHours: Number($('#setGoal').value), currency: $('#setCur').value, kw, tz: tzOffset() });
         Sound.ok(); toast('Réglages enregistrés. L\'agent les prend sous 30 min.'); break;
       }
+      case 'qr': {
+        if (DEMO) { toast('En démo, pas de QR code. Sur ta vraie ligue, ça te connecte ton iPhone.'); return; }
+        const url = `${location.origin}/#t=${encodeURIComponent(T)}`;
+        openSheet(`<h2>Scanne avec ton iPhone</h2><p class="small muted">Appareil photo, vise le code, touche le lien. Ne montre ce code à personne : il te connecte à ta place.</p><div id="qrbox" style="background:#fff;padding:16px;border-radius:16px;width:max-content;margin:16px auto"></div><button class="btn" data-act="closeSheet">Fermer</button>`);
+        await loadQR();
+        new window.QRCode(document.getElementById('qrbox'), { text: url, width: 240, height: 240, correctLevel: window.QRCode.CorrectLevel.M });
+        Sound.ok(); return;
+      }
+      case 'closeSheet': closeSheet(); return;
       case 'phoneKey': await call('/phone-key', { token: T }); Sound.ok(); break;
       case 'rotatePhone': await call('/phone-key', { token: T, rotate: true }); Sound.ok(); toast('Nouveaux liens. Remplace-les dans tes Raccourcis.'); break;
       case 'copyPhone': await copy(`${location.origin}/api/p/${S.data.me.phoneKey}/${el.dataset.ev}`); Sound.ok(); toast('Lien copié.'); return;
@@ -629,6 +692,10 @@ async function act(name, el) {
     }
     await refresh();
   } catch (e) { Sound.bad(); toast(e.message || 'Erreur', true); }
+}
+function loadQR() {
+  if (window.QRCode) return Promise.resolve();
+  return new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; sc.onload = res; sc.onerror = () => rej(new Error('QR code indisponible, utilise « Copier mon code ».')); document.head.appendChild(sc); });
 }
 async function copy(t) { try { await navigator.clipboard.writeText(t); } catch { const i = document.createElement('textarea'); i.value = t; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); } }
 
@@ -653,6 +720,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => { if (e.target.id === 'setGoal') $('#goalV').textContent = e.target.value + ' h'; });
 document.addEventListener('change', async e => {
+  if (e.target.id === 'setLive') { try { await call('/settings', { token: S.token || demo.token, live: e.target.checked }); Sound.pick(); toast(e.target.checked ? 'Direct activé.' : 'Mode fantôme. La ligue le voit.'); await refresh(); } catch (er) { toast(er.message, true); } return; }
   if (e.target.id === 'showPal') { try { await call('/settings', { token: S.token || demo.token, showPalier: e.target.checked }); Sound.pick(); await refresh(); } catch (er) { toast(er.message, true); } }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSheet(); document.querySelector('.levelup')?.remove(); } });
@@ -671,6 +739,8 @@ async function invitePreview() {
 
 // boot
 (async function boot() {
+  const hm = /^#t=([^&]+)/.exec(location.hash);
+  if (hm && !DEMO) { S.token = decodeURIComponent(hm[1]); ls.set('rk_token', S.token); S.tab = 'moi'; ls.set('rk_tab', 'moi'); history.replaceState(null, '', location.pathname); }
   if (DEMO) { demo = await buildDemo(); S.token = demo.token; }
   render();
   invitePreview();

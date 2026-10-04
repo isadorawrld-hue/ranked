@@ -62,11 +62,33 @@ export const DEFAULT_CATS = [
   { id: 'work', label: 'Autre boulot', work: true, idle: 300,
     kw: ['chatgpt', 'notion', 'google docs', 'google sheets', 'google slides', 'gmail', 'canva', 'figma', 'capcut', 'netlify', 'github', 'supabase', 'whatsapp', 'telegram', 'meta business', 'ads manager', 'geelark'],
     proc: ['code', 'cursor', 'excel', 'winword', 'powerpnt', 'notion', 'figma', 'capcut', 'adobe premiere pro', 'afterfx', 'photoshop', 'telegram', 'whatsapp', 'slack', 'geelark'] },
-  { id: 'scroll', label: 'Scroll perso', work: false, idle: 1800,
-    kw: ['youtube', 'netflix', 'instagram', 'tiktok', 'facebook', 'twitch', 'reddit', ' / x ', 'disney+', 'prime video', '9gag', 'crunchyroll'],
-    proc: ['steam', 'valorant', 'leagueclient', 'fortnitelauncher', 'epicgameslauncher', 'riotclientservices'] },
+  { id: 'games', label: 'Jeux vidéo', work: false, idle: 3600, fun: true,
+    kw: ['steam', 'epic games', 'battle.net', 'riot client', 'xbox', 'poki', 'crazygames', 'chess.com', 'lichess', 'geforce now', 'xcloud'],
+    proc: ['steam', 'steamwebhelper', 'epicgameslauncher', 'riotclientservices', 'riotclientux', 'leagueclient', 'league of legends', 'valorant', 'valorant-win64-shipping', 'fortniteclient-win64-shipping', 'fortnitelauncher', 'cs2', 'csgo', 'dota2', 'r5apex', 'gta5', 'gta5_enhanced', 'rdr2', 'minecraft', 'javaw', 'robloxplayerbeta', 'overwatch', 'rocketleague', 'eafc25', 'eafc26', 'fc25', 'fc26', 'cod', 'blackops6', 'battle.net', 'gamebar', 'xboxpcapp', 'genshinimpact', 'zenlesszonezero', 'starrail', 'eldenring', 'cyberpunk2077', 'pubg', 'tslgame', 'marvel-win64-shipping', 'deltaforceclient-win64-shipping'] },
+  { id: 'video', label: 'Vidéo / séries', work: false, idle: 7200, fun: true,
+    kw: ['youtube', 'netflix', 'twitch', 'prime video', 'disney+', 'crunchyroll', 'canal+', 'hbo max', 'max |', 'apple tv', 'paramount+', 'kick.com', 'molotov', 'vlc media player', 'anime-sama', 'voiranime', 'streaming'],
+    proc: ['vlc', 'netflix', 'potplayermini64', 'mpc-hc64', 'disneyplus'] },
+  { id: 'scroll', label: 'Réseaux sociaux', work: false, idle: 600, fun: true,
+    kw: ['instagram', 'tiktok', 'facebook', 'reddit', ' / x', 'x.com', 'twitter', '9gag', 'snapchat', 'pinterest', 'threads', 'linkedin'],
+    proc: [] },
 ];
 export const CAT_IDS = DEFAULT_CATS.map(c => c.id).concat('other');
+export const FUN_CATS = DEFAULT_CATS.filter(c => c.fun).map(c => c.id);
+// Display names the agent may send for the live status (never raw window titles)
+export const LIVE_NAMES = [
+  ['claude', 'Claude'], ['chatgpt', 'ChatGPT'], ['infloww', 'Infloww'], ['mypuls', 'MyPuls'], ['myfeed', 'MyFeed'], ['onlyfans', 'OnlyFans'], ['mym', 'MYM'],
+  ['tradingview', 'TradingView'], ['metatrader', 'MetaTrader'], ['terminal64', 'MetaTrader'], ['binance', 'Binance'], ['bybit', 'Bybit'],
+  ['youtube', 'YouTube'], ['netflix', 'Netflix'], ['twitch', 'Twitch'], ['prime video', 'Prime Video'], ['disney+', 'Disney+'], ['crunchyroll', 'Crunchyroll'], ['kick.com', 'Kick'], ['vlc', 'VLC'],
+  ['instagram', 'Instagram'], ['tiktok', 'TikTok'], ['facebook', 'Facebook'], ['reddit', 'Reddit'], ['x.com', 'X'], ['twitter', 'X'], ['snapchat', 'Snapchat'],
+  ['valorant', 'Valorant'], ['leagueclient', 'League of Legends'], ['league of legends', 'League of Legends'], ['fortnite', 'Fortnite'], ['cs2', 'Counter-Strike 2'], ['dota2', 'Dota 2'],
+  ['r5apex', 'Apex Legends'], ['gta5', 'GTA V'], ['rdr2', 'Red Dead 2'], ['minecraft', 'Minecraft'], ['javaw', 'Minecraft'], ['roblox', 'Roblox'], ['overwatch', 'Overwatch'],
+  ['rocketleague', 'Rocket League'], ['eafc', 'EA FC'], ['fc25', 'EA FC'], ['fc26', 'EA FC'], ['blackops', 'Call of Duty'], ['cod', 'Call of Duty'], ['genshin', 'Genshin Impact'],
+  ['eldenring', 'Elden Ring'], ['cyberpunk', 'Cyberpunk 2077'], ['tslgame', 'PUBG'], ['pubg', 'PUBG'], ['marvel-win64', 'Marvel Rivals'], ['chess.com', 'Chess.com'], ['lichess', 'Lichess'],
+  ['steam', 'Steam'], ['epic games', 'Epic Games'], ['code', 'VS Code'], ['cursor', 'Cursor'], ['excel', 'Excel'], ['canva', 'Canva'], ['capcut', 'CapCut'], ['figma', 'Figma'],
+  ['notion', 'Notion'], ['whatsapp', 'WhatsApp'], ['telegram', 'Telegram'], ['gmail', 'Gmail'], ['geelark', 'GeeLark'],
+];
+export const LIVE_FRESH_MS = 3 * 60000;
+const cleanLive = s => String(s || '').replace(/[^\p{L}\p{N} .:'+&-]/gu, '').trim().slice(0, 32);
 export const WORK_CATS = DEFAULT_CATS.filter(c => c.work).map(c => c.id);
 
 export function catsFor(player) {
@@ -163,7 +185,7 @@ export function playerTimeline(player, days, fromKey, toKey, weights = DEFAULT_W
     out.push({
       d, wm, pts, lp: lpFromPoints(pts), streak, joker, inactiveRun,
       ms: Math.round(ms.score), pct: ms.pct, hs: Math.round(hs),
-      scroll: (day && day.m ? Number(day.m.scroll) || 0 : 0) + phoneMin(day),
+      scroll: (day && day.m ? FUN_CATS.reduce((t, c) => t + (Number(day.m[c]) || 0), 0) : 0) + phoneMin(day),
       phone: phoneMin(day), phoneActive: !!(day && day.phoneEv),
       late: day ? Number(day.late) || 0 : 0,
       money: moneyOf(day), hasData: active, cats: day && day.m ? day.m : {},
@@ -177,14 +199,14 @@ export const CH_METRICS = {
   hours: { label: 'Heures de boulot', better: 'high' },
   points: { label: 'Points du jour', better: 'high' },
   money: { label: 'Progression argent', better: 'high' },
-  antiscroll: { label: 'Anti-scroll', better: 'low' },
+  antiscroll: { label: 'Anti-distraction', better: 'low' },
 };
 function chValue(metric, recs) {
   if (metric === 'hours') return recs.reduce((s, r) => s + Math.min(r.wm, HOURS_CAP_MIN), 0);
   if (metric === 'points') return recs.reduce((s, r) => s + r.pts, 0);
   if (metric === 'money') return recs.reduce((s, r) => s + r.ms, 0);
   // anti-scroll: least scroll, but a day under 2h of work counts as 600 scroll minutes (PC off is no win)
-  return recs.reduce((s, r) => s + (r.wm < 120 ? 600 : r.scroll), 0);
+  return recs.reduce((s, r) => s + (r.wm < 120 ? 600 : r.scroll), 0); // r.scroll = social + video + games + phone
 }
 export function resolveChallenge(ch, lines, todayOf) {
   if (ch.status !== 'active') return ch;
@@ -246,6 +268,15 @@ export const VANNES = {
   ],
   joker: ['{a} prend un jour off sans casser sa série. Zen Master.'],
   join: ['{a} entre dans la ligue. Bienvenue en Rouille, tout le monde commence là.'],
+  gameOn: [
+    '🎮 {a} vient de lancer {g}. Le business peut attendre, apparemment.',
+    '🎮 {a} est sur {g}. Pendant ce temps, ses concurrents bossent.',
+    '🎮 Alerte : {a} a lancé {g}. Quelqu\'un peut lui rappeler son objectif du mois ?',
+  ],
+  videoLong: [
+    '📺 {a} est sur {g} depuis plus d\'une heure. Le canapé gagne la manche.',
+    '📺 {a} binge {g} depuis 1 h. Productivité en pause.',
+  ],
   phoneOff: [
     '📵 {a} a coupé son tracker téléphone. On sait tous ce qu\'il fait sur Insta.',
     '📵 Plus de signal du téléphone de {a}. Tracker coupé, conscience pas tranquille.',
@@ -450,13 +481,21 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
     const { league, me } = a;
     const days = await loadDays(league);
     const c = computeLeague(league, days, now());
-    const phones = {};
-    await Promise.all(league.players.map(async p => { phones[p.id] = await store.get(`phone/${league.id}/${p.id}`); }));
+    const phones = {}, lives = {};
+    await Promise.all(league.players.map(async p => {
+      phones[p.id] = await store.get(`phone/${league.id}/${p.id}`);
+      lives[p.id] = await store.get(`live/${league.id}/${p.id}`);
+    }));
     for (const st of c.standings) {
       const ph = phones[st.id];
       st.phone = !ph || !ph.lastAt ? 'none' : now() - ph.lastAt < PHONE_OFF_MS ? 'on' : 'off';
       const line = c.lines[st.id] || [];
       st.today.phone = (line[line.length - 1] || {}).phone || 0;
+      const lv = lives[st.id];
+      const pl = league.players.find(x => x.id === st.id);
+      st.today.fun = FUN_CATS.reduce((t, c) => t + (st.today.cats[c] || 0), 0) + st.today.phone;
+      if (pl.live === false) st.live = { ghost: true };
+      else if (lv && lv.at && now() - lv.at < LIVE_FRESH_MS) st.live = { cat: lv.cat, label: lv.label, since: lv.since };
       if (st.phone === 'off') {
         const at = ph.lastAt + PHONE_OFF_MS;
         c.events.push({ id: 'f' + st.id + ph.lastAt, d: dayKey(at, 420), at, type: 'phoneOff', who: st.id, text: vanne('phoneOff', st.id + ph.lastAt, { a: st.name }) });
@@ -486,7 +525,7 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
       me: {
         id: me.id, role: me.role, goalHours: me.goalHours, streakHours: me.streakHours, moneyLabel: me.moneyLabel, kw: me.kw || {},
         currency: me.currency || 'EUR', showPalier: !!me.showPalier, palier: palierFor(me, true), name: me.name, emoji: me.emoji,
-        phoneKey: me.phoneKey || null,
+        phoneKey: me.phoneKey || null, live: me.live !== false,
         today: todayFor(me, now()),
         history: myLine.slice(-28).map(r => ({ d: r.d, wm: r.wm, pts: r.pts, money: r.money, ms: r.ms, hs: r.hs, streak: r.streak, cats: pickCats(r.cats), phone: r.phone })),
       },
@@ -565,6 +604,32 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
         days[b.date] = { ...prev, m: merged, late: Math.max(clamp(Number(b.late) || 0, 0, 1440), prev.late || 0), src: 'agent' };
         return days;
       });
+      if (b.now && typeof b.now === 'object') {
+        const cat = CAT_IDS.includes(b.now.cat) ? b.now.cat : null;
+        const label = cleanLive(b.now.label);
+        let announce = null;
+        await store.update(`live/${a.lid}/${a.pid}`, lv => {
+          lv ||= { ann: {} };
+          lv.ann ||= {};
+          const changed = lv.cat !== cat || lv.label !== label;
+          if (changed) { lv.since = now(); lv.vidAnn = false; }
+          lv.cat = cat; lv.label = label; lv.at = now();
+          const key = (cat || '') + ':' + label;
+          // one announce per game per 3 h; one per long video session
+          if (cat === 'games' && label && (!lv.ann[key] || now() - lv.ann[key] > 3 * 3600000)) { lv.ann[key] = now(); announce = { type: 'gameOn', g: label }; }
+          if (cat === 'video' && label && !lv.vidAnn && now() - lv.since >= 3600000) { lv.vidAnn = true; announce = { type: 'videoLong', g: label }; }
+          return lv;
+        });
+        if (announce && a.me.live !== false) {
+          await store.update('league/' + a.lid, league => {
+            league.posts ||= [];
+            const id = randId(8);
+            league.posts.push({ id, at: now(), from: null, kind: announce.type, who: a.pid, text: vanne(announce.type, id, { a: a.me.name, g: announce.g }) });
+            league.posts = league.posts.slice(-200);
+            return league;
+          });
+        }
+      }
       if (!a.me.agentSeenAt || now() - a.me.agentSeenAt > 5 * 60000 || Number(b.tz) !== a.me.tz) {
         await store.update('league/' + a.lid, league => {
           const p = league.players.find(x => x.id === a.pid);
@@ -594,7 +659,7 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
       const a = await auth(b.token);
       if (!a) return err(401, 'bad token');
       const extra = a.me.kw || {};
-      return ok({ cats: DEFAULT_CATS.map(({ id, work, idle, kw, proc }) => ({ id, work, idle, kw, kwx: (extra[id] || []), proc })), push: 60 });
+      return ok({ cats: DEFAULT_CATS.map(({ id, work, idle, kw, proc }) => ({ id, work, idle, kw, kwx: (extra[id] || []), proc })), names: LIVE_NAMES.map(([k, l]) => ({ k, l })), push: 60 });
     },
 
     'POST /money': async (b) => {
@@ -695,6 +760,7 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
         if (b.streakHours) p.streakHours = clamp(Number(b.streakHours) || 4, 1, 12);
         if (b.moneyLabel) p.moneyLabel = cleanName(b.moneyLabel);
         if (b.currency === 'EUR' || b.currency === 'USD') p.currency = b.currency;
+        if (typeof b.live === 'boolean') p.live = b.live;
         if (typeof b.showPalier === 'boolean') p.showPalier = b.showPalier;
         if (b.kw && typeof b.kw === 'object') {
           p.kw = {};

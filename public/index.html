@@ -6,6 +6,12 @@
 <meta name="theme-color" content="#0b0d2b">
 <title>RANKED</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%2355f2ff'/%3E%3Cstop offset='1' stop-color='%236a25ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M50 6 88 27v46L50 94 12 73V27z' fill='url(%23g)'/%3E%3Cpath d='M30 58l20-14 20 14M30 44l20-14 20 14' stroke='white' stroke-width='7' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RANKED">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@400;500;600&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
@@ -154,6 +160,28 @@ input[type=range]{width:100%; accent-color:var(--cyan)}
 .nav button svg{width:22px; height:22px}
 .nav button[aria-current=page]{color:var(--text); background:linear-gradient(160deg, rgba(85,242,255,.16), rgba(255,88,219,.12))}
 .nav .badge{position:absolute; top:4px; right:calc(50% - 20px); min-width:16px; height:16px; border-radius:8px; background:var(--pink); color:#fff; font-size:.68rem; display:grid; place-items:center; padding:0 4px}
+
+
+/* live */
+.nowcard{margin:0 0 14px; padding:14px; border-radius:var(--r-lg); background:var(--deep); border:1px solid var(--line)}
+.nowcard h3{margin-bottom:10px}
+.nowlist{display:flex; flex-direction:column; gap:6px}
+.nowrow{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 4px; border:0; background:transparent; text-align:left; width:100%; min-width:0}
+.nowrow .nm{font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0}
+.livechip{display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; font-size:.84rem; white-space:nowrap; max-width:62%; overflow:hidden; text-overflow:ellipsis;
+  border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:var(--muted)}
+.livechip.work{color:var(--lime); border-color:rgba(141,255,106,.35); background:rgba(141,255,106,.08)}
+.livechip.games{color:#ff8a98; border-color:rgba(255,106,125,.5); background:rgba(255,106,125,.12); box-shadow:0 0 14px rgba(255,106,125,.25)}
+.livechip.video{color:#cdb6ff; border-color:rgba(179,139,255,.5); background:rgba(179,139,255,.12)}
+.livechip.scroll{color:var(--gold); border-color:rgba(255,210,90,.45); background:rgba(255,210,90,.1)}
+.livechip.ghost{color:#d6e6ff; border-style:dashed}
+.livechip .lt{overflow:hidden; text-overflow:ellipsis; min-width:0}
+.pulse-dot{width:7px; height:7px; border-radius:50%; background:currentColor; box-shadow:0 0 8px currentColor; animation:blink 1.4s ease-in-out infinite; flex:none}
+@keyframes blink{50%{opacity:.25}}
+.livetag{font-family:var(--display); font-size:.68rem; font-weight:700; letter-spacing:.06em; padding:2px 6px; border-radius:6px; vertical-align:2px; margin-left:4px}
+.livetag.games{background:#ff6a7d; color:#1a0006} .livetag.video{background:#b38bff; color:#120030} .livetag.scroll{background:var(--gold); color:#1c1200}
+.ev.gameOn .ico{background:rgba(255,106,125,.16)} .ev.videoLong .ico{background:rgba(179,139,255,.16)} .ev.phoneOff .ico{background:rgba(255,106,125,.16)}
+.steps .btn{margin-top:6px}
 
 /* sheet + overlays */
 .scrim{position:fixed; inset:0; z-index:40; background:rgba(5,6,26,.6); backdrop-filter:blur(3px); display:flex; align-items:flex-end; justify-content:center; animation:fade .2s}
