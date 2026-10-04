@@ -143,6 +143,14 @@ async function buildDemo() {
     }
     if (!last) t += 86400000;
   }
+  // phone trackers: Awen + Rafael + Yanis on, Lucas cut his tracker 2 days ago, Mehdi never set it up
+  const keys = [];
+  for (const k of [0, 1, 2, 4]) keys[k] = (await api('POST', '/phone-key', { token: toks[k] })).json.key;
+  t -= 3 * 86400000; await api('GET', `/p/${keys[4]}/ping`); t += 3 * 86400000;
+  t = Date.now() - 4 * 3600000;
+  for (const [k, mins] of [[0, 34], [1, 95], [2, 61]]) {
+    await api('GET', `/p/${keys[k]}/open`); t += mins * 60000; await api('GET', `/p/${keys[k]}/close`); t -= mins * 60000;
+  }
   t = Date.now();
   return { api, token: toks[0], tick: () => {} };
 }
@@ -207,7 +215,7 @@ const ICONS = {
   mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 6 6M22 9l-6 6"/></svg>',
 };
 const CAT_COLORS = { claude: '#ff9a5a', crm: '#ff58db', trading: '#55f2ff', work: '#8dff6a', scroll: '#ffd25a', other: '#6d73b0' };
-const EV_ICON = { promo: '⬆️', demo: '⬇️', overtake: '🏎️', streakBreak: '💔', streak: '🔥', record: '🎯', inactive: '💤', chWin: '🏆', joker: '🧘', post: '💬' };
+const EV_ICON = { phoneOff: '📵', promo: '⬆️', demo: '⬇️', overtake: '🏎️', streakBreak: '💔', streak: '🔥', record: '🎯', inactive: '💤', chWin: '🏆', joker: '🧘', post: '💬' };
 const EMOJIS = ['🦊', '🐺', '🦁', '🐉', '🦅', '🐯', '🦈', '🐍'];
 
 function render() {
@@ -309,7 +317,7 @@ function rowHTML(s) {
     ${crest(s.rank.tier, s.rank.div)}
     <span class="who">
       <span class="name">${esc(s.emoji)} ${esc(s.name)}${me ? ' <span class="faint small">(toi)</span>' : ''}</span>
-      <span class="sub"><span><span class="dot ${s.agentOnline ? 'on' : ''}"></span>${fmtH(s.today.work)}</span>${s.streak ? `<span>🔥 ${s.streak}</span>` : ''}${money}${s.palier ? `<span>💰 ${esc(s.palier)}</span>` : ''}</span>
+      <span class="sub"><span><span class="dot ${s.agentOnline ? 'on' : ''}"></span>${fmtH(s.today.work)}</span>${s.phone === 'on' ? `<span title="Scroll téléphone aujourd'hui">📱 ${fmtH(s.today.phone)}</span>` : s.phone === 'off' ? '<span style="color:var(--red)">📵 tracker coupé</span>' : ''}${s.streak ? `<span>🔥 ${s.streak}</span>` : ''}${money}${s.palier ? `<span>💰 ${esc(s.palier)}</span>` : ''}</span>
     </span>
     <span class="lp"><span class="num">${s.lp}</span><br><span class="small muted">${esc(s.rank.label)}</span></span>
   </button>`;
@@ -338,6 +346,7 @@ function playerSheet(id) {
     <div class="stack" style="margin-top:16px">
       ${cats.map(c => `<div class="cat"><span>${esc(c.label)}</span><span class="track"><i style="width:${((s.today.cats[c.id] || 0) / max) * 100}%;background:${CAT_COLORS[c.id]}"></i></span><span class="num small" style="text-align:right">${fmtH(s.today.cats[c.id])}</span></div>`).join('')}
     </div>
+    <div class="cat" style="margin-top:12px"><span>Scroll téléphone</span><span class="track"><i style="width:${Math.min(100, (s.today.phone / max) * 100)}%;background:#ffd25a"></i></span><span class="num small" style="text-align:right">${s.phone === 'none' ? 'pas suivi' : s.phone === 'off' ? '📵 coupé' : fmtH(s.today.phone)}</span></div>
     <div class="grid2" style="margin-top:16px">
       <div class="card"><div class="small muted">Moyenne 7 jours</div><div class="num" style="font-size:1.4rem">${s.week.pts} pts</div></div>
       <div class="card"><div class="small muted">${esc(s.moneyLabel)}</div><div class="num" style="font-size:1.4rem">${s.moneyPct === null || s.moneyPct === undefined ? 'pas encore' : (s.moneyPct >= 0 ? '+' : '') + s.moneyPct + ' %'}</div></div>
@@ -367,7 +376,7 @@ function viewDuels() {
       <div class="f"><span class="small muted">Durée</span><div class="chips" id="dDays">${[1, 3, 7].map(n => `<button class="pick" data-days="${n}" aria-pressed="${S.duel.days === n}">${n} jour${n > 1 ? 's' : ''}</button>`).join('')}</div></div>
       <label class="f">La mise<input type="text" id="dStake" maxlength="40" placeholder="l'apéro, un resto…"></label>
       <button class="btn primary" data-act="duel" ${others.length ? '' : 'disabled'}>Envoyer le défi</button>
-      <p class="small faint" style="margin:0">Anti-scroll : le moins de scroll gagne, mais un jour à moins de 2 h de boulot compte comme 10 h de scroll. PC éteint, pas de victoire.</p>
+      <p class="small faint" style="margin:0">Anti-scroll : le moins de scroll (PC + téléphone) gagne. Un jour à moins de 2 h de boulot compte comme 10 h de scroll. Tracker téléphone coupé pendant le duel = défaite d'office.</p>
     </div>
   </section>
   <section class="section">
@@ -379,7 +388,7 @@ function duelHTML(c) {
   const meId = S.data.me.id, A = S.data.standings.find(s => s.id === c.from) || { name: '?', emoji: '' }, B = S.data.standings.find(s => s.id === c.to) || { name: '?', emoji: '' };
   const m = CH_METRICS[c.metric];
   const fmt = v => c.metric === 'hours' ? fmtH(v) : c.metric === 'antiscroll' ? fmtH(v) + ' scroll' : `${v} pts`;
-  const status = c.status === 'pending' ? (c.to === meId ? 'Il t\'attend' : 'En attente de réponse') : c.status === 'active' ? `Jusqu'au ${c.endDay.slice(8)}/${c.endDay.slice(5, 7)} inclus` : c.status === 'done' ? (c.winner ? `Victoire de ${esc(nameOf(c.winner))}` : 'Égalité') : c.status === 'declined' ? 'Refusé' : 'Annulé';
+  const status = c.status === 'pending' ? (c.to === meId ? 'Il t\'attend' : 'En attente de réponse') : c.status === 'active' ? `Jusqu'au ${c.endDay.slice(8)}/${c.endDay.slice(5, 7)} inclus` : c.status === 'done' ? (c.winner ? `Victoire de ${esc(nameOf(c.winner))}${c.forfeit ? ' (tracker coupé en face)' : ''}` : 'Égalité') : c.status === 'declined' ? 'Refusé' : 'Annulé';
   const tot = (c.va || 0) + (c.vb || 0);
   const pa = tot ? (c.metric === 'antiscroll' ? (c.vb / tot) : (c.va / tot)) * 100 : 50;
   return `<div class="duel">
@@ -465,6 +474,26 @@ function viewMoi() {
       </ol>
       <div class="grid2"><button class="btn primary" data-act="agent">Télécharger l'agent Windows</button><button class="btn ghost" data-act="agentUninstall">Désinstaller</button></div>
       <p class="small muted" style="margin:0">Il lit la fenêtre active toutes les 5 s pour classer ton temps (Claude, CRM, trading, boulot, scroll). Les titres restent sur ton PC, seules les minutes partent. Clavier et souris immobiles 5 min = pause. Téléphone : Apple et Google ne laissent pas lire le temps d'écran automatiquement, donc il n'est pas compté.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Téléphone (scroll iPhone)</h2>
+    <div class="card stack">
+      <div class="kv"><span>Statut</span><span>${st.phone === 'on' ? '<span class="dot on"></span>Suivi actif' : st.phone === 'off' ? '<span style="color:var(--red)">📵 Coupé depuis plus de 26 h</span>' : 'Pas encore réglé'}</span></div>
+      ${me.phoneKey ? `
+      <div class="small muted">Tes 3 liens perso. Ne les partage pas.</div>
+      ${[['open', 'Lien OUVERTE'], ['close', 'Lien FERMÉE'], ['ping', 'Lien CHAQUE SOIR']].map(([ev, l]) => `<div class="grid2" style="align-items:center"><code class="small">${esc(location.origin)}/api/p/${esc(me.phoneKey)}/${ev}</code><button class="btn sm" data-act="copyPhone" data-ev="${ev}">Copier ${l}</button></div>`).join('')}
+      <ol class="steps small">
+        <li>Ouvre l'app <b>Raccourcis</b>, onglet <b>Automatisation</b>, touche <b>+</b>.</li>
+        <li>Choisis <b>App</b>. Sélectionne Instagram, TikTok, YouTube, Snapchat, Facebook, X, Reddit, Netflix.</li>
+        <li>Coche <b>Est ouverte</b> seulement, puis <b>Exécuter immédiatement</b>, puis <b>Suivant</b>.</li>
+        <li><b>Nouveau raccourci vide</b>, ajoute l'action <b>Obtenir le contenu de l'URL</b>, colle le <b>lien OUVERTE</b>.</li>
+        <li>Refais pareil avec <b>Est fermée</b> et le <b>lien FERMÉE</b> (mêmes apps).</li>
+        <li>3e automatisation : <b>Heure de la journée</b>, 21:00, tous les jours, <b>Exécuter immédiatement</b>, <b>lien CHAQUE SOIR</b>.</li>
+      </ol>
+      <p class="small muted" style="margin:0">Pas de fichier à installer : Apple bloque toute app qui lirait le Temps d'écran. Les Raccourcis envoient juste « ouvert » et « fermé ». Zéro signal pendant 26 h = 📵 visible par toute la ligue, et défaite d'office en duel anti-scroll. Si un intitulé diffère un peu sur ton iPhone, prends le plus proche.</p>
+      <button class="btn ghost sm" data-act="rotatePhone">Changer mes liens (les anciens meurent)</button>` : `<button class="btn primary" data-act="phoneKey">Générer mes liens téléphone</button>`}
     </div>
   </section>
 
@@ -586,6 +615,9 @@ async function act(name, el) {
         await call('/settings', { token: T, name: $('#setName').value, moneyLabel: $('#setMoney').value, emoji: pressedIn('#setEmoji').emoji, goalHours: Number($('#setGoal').value), currency: $('#setCur').value, kw, tz: tzOffset() });
         Sound.ok(); toast('Réglages enregistrés. L\'agent les prend sous 30 min.'); break;
       }
+      case 'phoneKey': await call('/phone-key', { token: T }); Sound.ok(); break;
+      case 'rotatePhone': await call('/phone-key', { token: T, rotate: true }); Sound.ok(); toast('Nouveaux liens. Remplace-les dans tes Raccourcis.'); break;
+      case 'copyPhone': await copy(`${location.origin}/api/p/${S.data.me.phoneKey}/${el.dataset.ev}`); Sound.ok(); toast('Lien copié.'); return;
       case 'contest': await call('/contest', { token: T, pid: el.dataset.id, date: el.dataset.d }); Sound.roast(); toast('Contesté.'); break;
       case 'copyInvite': await copy($('#invUrl').value); toast('Lien copié. Balance-le dans le groupe.'); Sound.ok(); return;
       case 'newInvite': await call('/admin', { token: T, action: 'newInvite' }); Sound.ok(); break;

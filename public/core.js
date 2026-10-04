@@ -137,6 +137,8 @@ export function lpFromPoints(p) {
   return clamp(Math.round((p - 40) * 0.9), -20, 54);
 }
 
+export const phoneMin = day => Math.round((day && Number(day.phoneSec)) / 60 || 0);
+
 // Full timeline for one player. Returns per-day records.
 export function playerTimeline(player, days, fromKey, toKey, weights = DEFAULT_WEIGHTS) {
   const goal = player.goalHours || 6;
@@ -161,7 +163,8 @@ export function playerTimeline(player, days, fromKey, toKey, weights = DEFAULT_W
     out.push({
       d, wm, pts, lp: lpFromPoints(pts), streak, joker, inactiveRun,
       ms: Math.round(ms.score), pct: ms.pct, hs: Math.round(hs),
-      scroll: day && day.m ? Number(day.m.scroll) || 0 : 0,
+      scroll: (day && day.m ? Number(day.m.scroll) || 0 : 0) + phoneMin(day),
+      phone: phoneMin(day), phoneActive: !!(day && day.phoneEv),
       late: day ? Number(day.late) || 0 : 0,
       money: moneyOf(day), hasData: active, cats: day && day.m ? day.m : {},
     });
@@ -189,12 +192,22 @@ export function resolveChallenge(ch, lines, todayOf) {
   if (!a || !b) return ch;
   const ended = todayOf(ch.from) > ch.endDay && todayOf(ch.to) > ch.endDay;
   const pick = line => line.filter(r => r.d >= ch.startDay && r.d <= ch.endDay);
-  const va = chValue(ch.metric, pick(a)), vb = chValue(ch.metric, pick(b));
+  const pa = pick(a), pb = pick(b);
+  const va = chValue(ch.metric, pa), vb = chValue(ch.metric, pb);
   const low = CH_METRICS[ch.metric].better === 'low';
-  const lead = va === vb ? null : ((va > vb) !== low ? ch.from : ch.to);
-  return { ...ch, va, vb, lead, status: ended ? 'done' : 'active', winner: ended ? lead : undefined };
+  let lead = va === vb ? null : ((va > vb) !== low ? ch.from : ch.to);
+  let forfeit;
+  if (ch.metric === 'antiscroll') {
+    // phone tracker off on a past day of the duel = forfeit (if the other kept it on)
+    const isPast = (r, pid) => r.d < todayOf(pid);
+    const offA = pa.some(r => isPast(r, ch.from) && !r.phoneActive), offB = pb.some(r => isPast(r, ch.to) && !r.phoneActive);
+    if (offA !== offB) { lead = offA ? ch.to : ch.from; forfeit = offA ? ch.from : ch.to; }
+  }
+  return { ...ch, va, vb, lead, forfeit, status: ended ? 'done' : 'active', winner: ended ? lead : undefined };
 }
 export const CH_WIN_LP = 15, CH_LOSE_LP = -5;
+export const PHONE_OFF_MS = 26 * 3600000; // no phone signal for 26 h = tracker off
+export const PHONE_SESSION_MAX_MS = 60 * 60000; // one app session counts 60 min max (screen locked inside the app)
 
 // ---------- Vannes ----------
 export const VANNES = {
@@ -233,6 +246,10 @@ export const VANNES = {
   ],
   joker: ['{a} prend un jour off sans casser sa série. Zen Master.'],
   join: ['{a} entre dans la ligue. Bienvenue en Rouille, tout le monde commence là.'],
+  phoneOff: [
+    '📵 {a} a coupé son tracker téléphone. On sait tous ce qu\'il fait sur Insta.',
+    '📵 Plus de signal du téléphone de {a}. Tracker coupé, conscience pas tranquille.',
+  ],
 };
 export const QUICK_ROASTS = [
   'T\'as fini ta sieste ?',
@@ -433,6 +450,18 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
     const { league, me } = a;
     const days = await loadDays(league);
     const c = computeLeague(league, days, now());
+    const phones = {};
+    await Promise.all(league.players.map(async p => { phones[p.id] = await store.get(`phone/${league.id}/${p.id}`); }));
+    for (const st of c.standings) {
+      const ph = phones[st.id];
+      st.phone = !ph || !ph.lastAt ? 'none' : now() - ph.lastAt < PHONE_OFF_MS ? 'on' : 'off';
+      const line = c.lines[st.id] || [];
+      st.today.phone = (line[line.length - 1] || {}).phone || 0;
+      if (st.phone === 'off') {
+        const at = ph.lastAt + PHONE_OFF_MS;
+        c.events.push({ id: 'f' + st.id + ph.lastAt, d: dayKey(at, 420), at, type: 'phoneOff', who: st.id, text: vanne('phoneOff', st.id + ph.lastAt, { a: st.name }) });
+      }
+    }
     const posts = (league.posts || []).slice(-80);
     const feed = [...c.events.map(e => ({ ...e, auto: true })), ...posts.map(p => ({ ...p, type: 'post' }))]
       .sort((x, y) => (y.at || Date.parse(y.d + 'T23:00:00Z')) - (x.at || Date.parse(x.d + 'T23:00:00Z'))).slice(0, 80);
@@ -457,8 +486,9 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
       me: {
         id: me.id, role: me.role, goalHours: me.goalHours, streakHours: me.streakHours, moneyLabel: me.moneyLabel, kw: me.kw || {},
         currency: me.currency || 'EUR', showPalier: !!me.showPalier, palier: palierFor(me, true), name: me.name, emoji: me.emoji,
+        phoneKey: me.phoneKey || null,
         today: todayFor(me, now()),
-        history: myLine.slice(-28).map(r => ({ d: r.d, wm: r.wm, pts: r.pts, money: r.money, ms: r.ms, hs: r.hs, streak: r.streak, cats: pickCats(r.cats) })),
+        history: myLine.slice(-28).map(r => ({ d: r.d, wm: r.wm, pts: r.pts, money: r.money, ms: r.ms, hs: r.hs, streak: r.streak, cats: pickCats(r.cats), phone: r.phone })),
       },
       standings: c.standings,
       challenges: c.challenges.slice(-30).reverse(),
@@ -544,6 +574,20 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
         });
       }
       return ok({ ok: true });
+    },
+
+    'POST /phone-key': async (b) => {
+      const a = await auth(b.token);
+      if (!a) return err(401, 'Code perso invalide.');
+      let key = a.me.phoneKey;
+      if (!key || b.rotate) {
+        const old = key;
+        key = randId(16);
+        await store.update('league/' + a.lid, league => { league.players.find(x => x.id === a.pid).phoneKey = key; return league; });
+        await store.set('phonekey/' + key, { lid: a.lid, pid: a.pid });
+        if (old) await store.set('phonekey/' + old, { revoked: true });
+      }
+      return ok({ key });
     },
 
     'POST /agent-config': async (b) => {
@@ -696,7 +740,41 @@ export function createApi(store, { now = () => Date.now(), agentTemplate = null,
     },
   };
 
+  async function phoneEvent(key, ev) {
+    const ref = await store.get('phonekey/' + key);
+    if (!ref || !ref.lid) return { status: 404, text: 'lien inconnu', headers: { 'content-type': 'text/plain' } };
+    const league = await store.get('league/' + ref.lid);
+    const p = league && league.players.find(x => x.id === ref.pid && !x.removed);
+    if (!p) return { status: 404, text: 'joueur inconnu', headers: { 'content-type': 'text/plain' } };
+    const t = now();
+    let add = null; // { day, sec }
+    await store.update(`phone/${ref.lid}/${ref.pid}`, st => {
+      st ||= { openAt: null, lastAt: 0 };
+      add = null;
+      if (st.openAt && (ev === 'open' || ev === 'close')) {
+        const sec = Math.max(0, Math.min(t - st.openAt, PHONE_SESSION_MAX_MS)) / 1000;
+        add = { day: dayKey(st.openAt, p.tz ?? 420), sec };
+        st.openAt = null;
+      }
+      if (ev === 'open') st.openAt = t;
+      st.lastAt = t;
+      return st;
+    });
+    const today = dayKey(t, p.tz ?? 420);
+    await store.update(`days/${ref.lid}/${ref.pid}`, days => {
+      days ||= {};
+      days[today] = { ...(days[today] || {}), phoneEv: ((days[today] || {}).phoneEv || 0) + 1 };
+      if (add && add.sec > 0) days[add.day] = { ...(days[add.day] || {}), phoneSec: ((days[add.day] || {}).phoneSec || 0) + add.sec };
+      return days;
+    });
+    return { status: 200, text: 'ok', headers: { 'content-type': 'text/plain', 'cache-control': 'no-store' } };
+  }
+
   return async function handle(method, path, body = {}) {
+    const pm = /^\/p\/([a-z0-9]{8,32})\/(open|close|ping)$/.exec(path);
+    if (pm && (method === 'GET' || method === 'POST')) {
+      try { return await phoneEvent(pm[1], pm[2]); } catch (e) { return err(500, 'Erreur serveur : ' + (e && e.message || e)); }
+    }
     const r = routes[`${method} ${path}`];
     if (!r) return err(404, 'Route inconnue.');
     try { return await r(body || {}); }
