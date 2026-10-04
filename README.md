@@ -17,6 +17,12 @@ Fichier `.cmd` téléchargé depuis l'onglet Moi. Il lit la fenêtre active tout
 (Claude, Infloww / CRM, trading, boulot, scroll, autre) et envoie seulement des minutes. Pause si clavier et souris
 immobiles 5 min (15 min en trading). Rien n'est compté pendant la veille. Démarre avec Windows.
 
+## Direct + mur de la honte
+L'agent envoie toutes les 60 s (15 s si ça change) ce que le joueur fait : catégorie + un nom court tiré
+d'une liste fixe (Valorant, Netflix, Claude…) ou du dossier d'install du jeu (Steam, Epic, Riot, Xbox…).
+Jamais le titre brut d'une fenêtre. Jeu lancé = annonce dans le feed (1 fois / 3 h par jeu). Vidéo plus
+d'1 h = annonce. Option « mode fantôme » dans Réglages, visible par tous.
+
 ## Scroll iPhone
 Apple bloque toute app qui lirait le Temps d'écran. On passe par l'app Raccourcis : 2 automatisations
 (app réseau social « Est ouverte » / « Est fermée ») appellent `/api/p/<clé>/open|close`, plus un ping
