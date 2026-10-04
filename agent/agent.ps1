@@ -49,8 +49,9 @@ public static class RkWin {
     $procId = [uint32]0
     [void][RkWin]::GetWindowThreadProcessId($h, [ref]$procId)
     $name = ''
-    try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {}
-    return @{ title = [RkWin]::Title($h); proc = $name }
+    $path = ''
+    try { $pr = Get-Process -Id $procId -ErrorAction Stop; $name = $pr.ProcessName; try { $path = '' + $pr.Path } catch {} } catch {}
+    return @{ title = [RkWin]::Title($h); proc = $name; path = $path }
   }
   function Get-RkIdleSeconds { return [RkWin]::IdleSeconds() }
 }
@@ -75,17 +76,61 @@ function Update-RkConfig {
   $script:CfgAt = Get-RkNow
 }
 
-function Get-RkCategory($title, $proc) {
+# Game installed by a launcher: returns the game folder name, or $null
+$script:GameDirs = @('\steamapps\common\', '\epic games\', '\riot games\', '\xboxgames\', '\battle.net\', '\ubisoft game launcher\games\', '\ea games\', '\gog galaxy\games\', '\roblox\versions\')
+function Get-RkGameName($path) {
+  $lp = ('' + $path).ToLower()
+  if (-not $lp) { return $null }
+  foreach ($d in $script:GameDirs) {
+    $i = $lp.IndexOf($d)
+    if ($i -ge 0) {
+      $rest = $path.Substring($i + $d.Length)
+      $name = ($rest -split '\\')[0]
+      if ($d -eq '\roblox\versions\') { return 'Roblox' }
+      if ($name) { return $name }
+      return 'un jeu'
+    }
+  }
+  return $null
+}
+
+# Short display name for the live status. Only names from the league list or a game folder, never a window title.
+function Get-RkLiveLabel($cat, $title, $proc, $game) {
+  if ($game) { return $game }
+  $t = ('' + $title).ToLower()
+  $p = ('' + $proc).ToLower()
+  $names = @($script:Cfg.names)
+  if ($cat) {
+    # names tied to the detected category win (a YouTube video about Claude is labelled YouTube)
+    $own = @($names | Where-Object { (@($cat.kw) -contains $_.k) -or (@($cat.proc) -contains $_.k) -or (@($cat.kwx) -contains $_.k) })
+    $names = $own + @($names | Where-Object { $own -notcontains $_ })
+  }
+  foreach ($n in $names) {
+    $k = '' + $n.k
+    if ($p -eq $k -or ($k.Length -ge 5 -and $p.StartsWith($k))) { return $n.l }
+  }
+  foreach ($n in $names) {
+    $k = [regex]::Escape(('' + $n.k))
+    if ($t -match ('(^|[^a-z0-9])' + $k + '([^a-z0-9]|$)')) { return $n.l }
+  }
+  if ($cat -and $cat.id -eq 'games') { return 'un jeu' }
+  if ($cat -and $cat.id -eq 'video') { return 'une video' }
+  return ''
+}
+
+function Get-RkCategory($title, $proc, $game) {
   if (-not $script:Cfg) { return $null }
   $t = ('' + $title).ToLower()
   $p = ('' + $proc).ToLower()
   $cats = @($script:Cfg.cats)
+  if ($game) { foreach ($c in $cats) { if ($c.id -eq 'games') { return $c } } }
   # 1. process name
   foreach ($c in $cats) { if (@($c.proc) -contains $p) { return $c } }
   # 2. player's own keywords first (they win over defaults)
   foreach ($c in $cats) { foreach ($k in @($c.kwx)) { if ($k -and $t.Contains($k)) { return $c } } }
-  # 3. defaults: scroll is checked first so a video about work still counts as scroll
-  $ordered = @($cats | Where-Object { $_.id -eq 'scroll' }) + @($cats | Where-Object { $_.id -ne 'scroll' })
+  # 3. defaults: fun categories are checked first so a video about work still counts as fun
+  $fun = @('video', 'scroll', 'games')
+  $ordered = @($cats | Where-Object { $fun -contains $_.id }) + @($cats | Where-Object { $fun -notcontains $_.id })
   foreach ($c in $ordered) { foreach ($k in @($c.kw)) { if ($k -and $t.Contains($k)) { return $c } } }
   return $null
 }
@@ -106,11 +151,12 @@ function Read-RkState {
 }
 function Save-RkState($s) { try { $s | ConvertTo-Json -Depth 4 | Set-Content -Path $StateFile -Encoding UTF8 } catch {} }
 
+$script:Live = @{ cat = $null; label = '' }
 function Send-RkTotals($s) {
   $minutes = @{}
   foreach ($k in $s.sec.Keys) { $minutes[$k] = [math]::Floor($s.sec[$k] / 60) }
   $tz = [int][math]::Round([TimeZoneInfo]::Local.GetUtcOffset((Get-RkNow)).TotalMinutes)
-  $body = @{ token = $Token; date = $s.date; tz = $tz; minutes = $minutes; late = [math]::Floor($s.late / 60); v = $AgentVersion } | ConvertTo-Json -Compress -Depth 4
+  $body = @{ token = $Token; date = $s.date; tz = $tz; minutes = $minutes; late = [math]::Floor($s.late / 60); v = $AgentVersion; now = $script:Live } | ConvertTo-Json -Compress -Depth 4
   try {
     Invoke-RestMethod -Uri "$Server/api/ingest" -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 20 | Out-Null
     return $true
@@ -145,17 +191,23 @@ while ($true) {
     $state = New-RkState $date
   }
   $fg = Get-RkForeground
-  if ($fg -and $dt -gt 0) {
-    $cat = Get-RkCategory $fg.title $fg.proc
+  $prevLive = '' + $script:Live.cat + '|' + $script:Live.label
+  if ($fg) {
+    $game = Get-RkGameName $fg.path
+    $cat = Get-RkCategory $fg.title $fg.proc $game
     $limit = if ($cat -and $cat.idle) { [double]$cat.idle } else { 300 }
     if ((Get-RkIdleSeconds) -lt $limit) {
       $id = if ($cat) { $cat.id } else { 'other' }
-      if (-not $state.sec.ContainsKey($id)) { $state.sec[$id] = 0 }
-      $state.sec[$id] += $dt
-      if ($cat -and $cat.work -and ($now.Hour -ge 23 -or $now.Hour -lt 4)) { $state.late += $dt }
-    }
-  }
-  if (($now - $lastPush).TotalSeconds -ge $PushSec) {
+      if ($dt -gt 0) {
+        if (-not $state.sec.ContainsKey($id)) { $state.sec[$id] = 0 }
+        $state.sec[$id] += $dt
+        if ($cat -and $cat.work -and ($now.Hour -ge 23 -or $now.Hour -lt 4)) { $state.late += $dt }
+      }
+      $script:Live = @{ cat = $id; label = (Get-RkLiveLabel $cat $fg.title $fg.proc $game) }
+    } else { $script:Live = @{ cat = $null; label = '' } }
+  } else { $script:Live = @{ cat = $null; label = '' } }
+  $liveChanged = ('' + $script:Live.cat + '|' + $script:Live.label) -ne $prevLive
+  if (($now - $lastPush).TotalSeconds -ge $PushSec -or ($liveChanged -and ($now - $lastPush).TotalSeconds -ge 15)) {
     Save-RkState $state
     [void](Send-RkTotals $state)
     $lastPush = $now
